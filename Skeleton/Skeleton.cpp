@@ -72,12 +72,26 @@ void onInitialization() {
 	unsigned int vbo;		// vertex buffer object
 	glGenBuffers(1, &vbo);	// Generate 1 buffer
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
-	float vertices[] = { -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 0.0f };
+	
+	float circleVertices[104];
+	// Center coordinates
+	circleVertices[0] = 0.0f;
+	circleVertices[1] = 0.0f;
+
+	// Calculate vertices of circle
+	for (int i = 1; i <= 50; i++) {
+		double phi = 2 * M_PI * i / 50;
+		circleVertices[2 * i] = cos(phi);
+		circleVertices[2 * i + 1] = sin(phi);
+	}
+	// Extra point for GL_TRIANGLE_FAN to finish circle
+	circleVertices[102] = circleVertices[2];
+	circleVertices[103] = circleVertices[3];
+
 	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-		sizeof(vertices),  // # bytes
-		vertices,	      	// address
-		GL_DYNAMIC_DRAW);	// we do not change later
+		sizeof(circleVertices),  // # bytes
+		circleVertices,	      	// address
+		GL_STATIC_DRAW);	// we do not change later
 
 	glEnableVertexAttribArray(0);  // AttribArray 0
 	glVertexAttribPointer(0,       // vbo -> AttribArray 0
@@ -93,22 +107,19 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);     // background color
 	glClear(GL_COLOR_BUFFER_BIT); // clear frame buffer
 
-	// Set color to (0, 1, 0) = green
-	int location = glGetUniformLocation(gpuProgram.getId(), "color");
-	glUniform3f(location, 0.0f, 1.0f, 0.0f); // 3 floats
-
 	float MVPtransf[4][4] = { 1, 0, 0, 0,    // MVP matrix, 
 							  0, 1, 0, 0,    // row-major!
 							  0, 0, 1, 0,
 							  0, 0, 0, 1 };
-
-	location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
+	int location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
 	glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
 
-	// Here is the place I have to add stuff to the vao! ******************************************************************************
+	// Set CIRCLE color to white (1, 1, 1)
+	int colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+	glUniform3f(colorLocation, 1.0f, 1.0f, 1.0f); // 3 floats
 
 	glBindVertexArray(vao);  // Draw call
-	glDrawArrays(GL_TRIANGLES, 0 /*startIdx*/, 3 /*# Elements*/);
+	glDrawArrays(GL_TRIANGLE_FAN, 0 /*startIdx*/, 52 /*# Elements*/);
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
