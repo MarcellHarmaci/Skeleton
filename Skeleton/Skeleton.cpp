@@ -62,6 +62,9 @@ const char * const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
+int sizeOfVertexArray = 104;
+float* vertexArray = new float[sizeOfVertexArray];
+
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
@@ -73,24 +76,23 @@ void onInitialization() {
 	glGenBuffers(1, &vbo);	// Generate 1 buffer
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	
-	float circleVertices[104];
 	// Center coordinates
-	circleVertices[0] = 0.0f;
-	circleVertices[1] = 0.0f;
+	vertexArray[0] = 0.0f;
+	vertexArray[1] = 0.0f;
 
 	// Calculate vertices of circle
 	for (int i = 1; i <= 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		circleVertices[2 * i] = cos(phi);
-		circleVertices[2 * i + 1] = sin(phi);
+		vertexArray[2 * i] = cos(phi);
+		vertexArray[2 * i + 1] = sin(phi);
 	}
 	// Extra point for GL_TRIANGLE_FAN to finish circle
-	circleVertices[102] = circleVertices[2];
-	circleVertices[103] = circleVertices[3];
+	vertexArray[102] = vertexArray[2];
+	vertexArray[103] = vertexArray[3];
 
 	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-		sizeof(circleVertices),  // # bytes
-		circleVertices,	      	// address
+		sizeOfVertexArray * sizeof(float),  // # bytes
+		vertexArray,	      	// address
 		GL_STATIC_DRAW);	// we do not change later
 
 	glEnableVertexAttribArray(0);  // AttribArray 0
@@ -114,12 +116,30 @@ void onDisplay() {
 	int location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
 	glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
 
-	// Set CIRCLE color to white (1, 1, 1)
+	// Set CIRCLE color to WHITE (1, 1, 1)
 	int colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 1.0f, 1.0f, 1.0f); // 3 floats
 
-	glBindVertexArray(vao);  // Draw call
-	glDrawArrays(GL_TRIANGLE_FAN, 0 /*startIdx*/, 52 /*# Elements*/);
+	// Draw call
+	glBindVertexArray(vao);
+
+	// Draw circle
+	glDrawArrays(
+		GL_TRIANGLE_FAN,
+		0, /*startIdx*/
+		52 /*# Elements*/
+	);
+
+	// Set TRIANGLE color to RED (1, 0, 0)
+	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+	glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f); // 3 floats
+
+	// Draw triangles
+	glDrawArrays(
+		GL_TRIANGLES,
+		52,
+		sizeOfVertexArray / 2
+	);
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
@@ -193,7 +213,43 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 				printf("Points of triangle: {(%3.2f, %3.2f) (%3.2f, %3.2f) (%3.2f, %3.2f)}\n",
 					triangles[i].p1.x, triangles[i].p1.y, triangles[i].p2.x, triangles[i].p2.y, triangles[i].p3.x, triangles[i].p3.y);
 			}
-			// Call onDisplay() somehow I guess ***************************************************************************************
+
+			// Dynamicly make space for new coords 
+			int oldSize = sizeOfVertexArray;
+			sizeOfVertexArray += 6; // Longer with 3 * 2 floats
+			float* temp = new float[sizeOfVertexArray];
+
+			// Copy previous values
+			for (int i = 0; i < oldSize; i++) {
+				temp[i] = vertexArray[i];
+			}
+
+			// Swap pointers and delete outdated array
+			float* oldArray = vertexArray;
+			vertexArray = temp;
+			delete[] oldArray;
+
+			// Add the 3 new coordinates to the vertexArray
+			vertexArray[oldSize + 0] = points.at(points.size() - 3).x;
+			vertexArray[oldSize + 1] = points.at(points.size() - 3).y;
+			vertexArray[oldSize + 2] = points.at(points.size() - 2).x;
+			vertexArray[oldSize + 3] = points.at(points.size() - 2).y;
+			vertexArray[oldSize + 4] = points.at(points.size() - 1).x;
+			vertexArray[oldSize + 5] = points.at(points.size() - 1).y;
+
+			// Update vertices in VRAM
+			glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
+				sizeOfVertexArray * sizeof(float),  // # bytes
+				vertexArray,	      	// address
+				GL_STATIC_DRAW);	// we do not change later
+
+			// TODO - remove later, this is for transparency while debugging
+			//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
+			//	printf("(%3.2f, %3.2f)\t", vertexArray[2 * i], vertexArray[2 * i + 1]);
+			//}
+			
+			// Invalidate
+			glutPostRedisplay();
 		}
 
 	}
