@@ -144,6 +144,35 @@ void onDisplay() {
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
 
+// As I noticed, this function is not working correctly
+vec2 calcCenter(vec2 p1, vec2 p2) {
+	printf("p1: %3.2f, %3.2f\np2: %3.2f, %3.2f\n\n", p1.x, p1.y, p2.x, p2.y);
+	vec2 center;
+
+	vec2 normal = vec2(
+		p1.x - p2.x,
+		p1.y - p2.y
+	);
+
+	vec2 midPoint = vec2(
+		(p1.x + p2.x) / 2.0f,
+		(p1.y + p2.y) / 2.0f
+	);
+
+	center.y = (normal.x * midPoint.x + normal.y * midPoint.y + (p1.x * p1.x) + (p1.y * p1.y) - (p2.x * p2.x) - (p2.y * p2.y)) / (3.0f * normal.y);
+	center.x = midPoint.x + ((normal.y * (midPoint.y - center.y)) / normal.x);
+
+	return center;
+}
+
+float calcRadius(vec2 center, vec2 point) {
+	printf("center: %3.2f, %3.2f\npoint: %3.2f, %3.2f\n\n", center.x, center.y, point.x, point.y);
+	return sqrt(
+		(point.x - center.x) * (point.x - center.x) +
+		(point.y - center.y) * (point.y - center.y)
+	);
+}
+
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
@@ -184,6 +213,7 @@ public:
 // My global variables
 std::vector<vec2> points;
 std::vector<SiriusTriangle> triangles;
+int clickCnt = 0;
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
@@ -196,11 +226,33 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 
 	if (state == GLUT_DOWN && button == GLUT_LEFT_BUTTON) {
 		points.push_back(vec2(cX, cY));
+		clickCnt++;
 		
 		// TODO remove printing
 		printf("Mouse1 pressed at (%3.2f, %3.2f)\n", cX, cY);
+
+		switch (clickCnt % 3)
+		{
+		case 0:
+			break;
+		case 1:
+			break;
+		case 2:
+			vec2 p1 = points.at(points.size() - 2);
+			vec2 p2 = points.at(points.size() - 1);
+
+			vec2 center = calcCenter(p1, p2);
+			float radius = calcRadius(center, p1);
+			float radius2 = calcRadius(center, p2);
+
+			printf(
+				"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\n",
+				center.x, center.y, radius, radius2
+			);
+			break;
+		}
 		
-		if (points.size() % 3 == 0) {
+		if (clickCnt % 3 == 0) {
 			triangles.push_back(
 				SiriusTriangle(
 					vec2(points.at(points.size() - 3)),
