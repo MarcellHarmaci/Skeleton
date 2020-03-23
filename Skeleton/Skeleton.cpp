@@ -104,6 +104,35 @@ void onInitialization() {
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
 }
 
+class SiriusTriangle {
+public:
+	vec2 p1;
+	vec2 p2;
+	vec2 p3;
+
+public:
+	SiriusTriangle(float x1, float x2, float y1, float y2, float z1, float z2) {
+		p1 = vec2(x1, x2);
+		p2 = vec2(y1, y2);
+		p3 = vec2(z1, z2);
+	}
+
+	SiriusTriangle(vec2 p1, vec2 p2, vec2 p3) {
+		this->p1 = p1;
+		this->p2 = p2;
+		this->p3 = p3;
+	}
+};
+
+// My global variables
+std::vector<vec2> points;
+std::vector<SiriusTriangle> triangles;
+int cntClicks = 0;
+int cntCircles = 0;
+
+int offsetTriangles = 52;
+int offsetCircles = offsetTriangles;	// add triangles later
+
 // Window has become invalid: Redraw
 void onDisplay() {
 	glClearColor(0, 0, 0, 0);     // background color
@@ -137,40 +166,220 @@ void onDisplay() {
 	// Draw triangles
 	glDrawArrays(
 		GL_TRIANGLES,
-		52,
-		sizeOfVertexArray / 2
+		offsetTriangles,
+		offsetTriangles + triangles.size() * 3
 	);
+
+	// Set circles color to GREEN
+	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+	glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f); // 3 floats
+
+	// Draw circles
+	for (int i = 0; i < cntCircles; i++) {
+		glDrawArrays(
+			GL_LINE_STRIP,
+			offsetCircles + 50 * i,
+			offsetCircles + 50 * i + 50
+		);
+	}
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
 
-// As I noticed, this function is not working correctly
 vec2 calcCenter(vec2 p1, vec2 p2) {
-	printf("p1: %3.2f, %3.2f\np2: %3.2f, %3.2f\n\n", p1.x, p1.y, p2.x, p2.y);
-	vec2 center;
+	// inverse of p1
+	vec2 invP1 = vec2(
+		p1.x / (p1.x * p1.x + p1.y * p1.y),
+		p1.y / (p1.x * p1.x + p1.y * p1.y)
+	);
 
-	vec2 normal = vec2(
+	// normal 1 and 2
+	vec2 n = vec2(
 		p1.x - p2.x,
 		p1.y - p2.y
 	);
+	vec2 m = vec2(
+		p1.x - invP1.x,
+		p1.y - invP1.y
+	);
 
-	vec2 midPoint = vec2(
+	// midpoint 1 and 2
+	vec2 i = vec2(
 		(p1.x + p2.x) / 2.0f,
 		(p1.y + p2.y) / 2.0f
 	);
+	vec2 j = vec2(
+		(p1.x + invP1.x) / 2.0f,
+		(p1.y + invP1.y) / 2.0f
+	);
 
-	center.y = (normal.x * midPoint.x + normal.y * midPoint.y + (p1.x * p1.x) + (p1.y * p1.y) - (p2.x * p2.x) - (p2.y * p2.y)) / (3.0f * normal.y);
-	center.x = midPoint.x + ((normal.y * (midPoint.y - center.y)) / normal.x);
+	vec2 center = vec2();
+	center.x = (n.y * dot(m, j) - m.y * dot(n, i)) / (n.y * m.x - n.x * m.y);
+	center.y = (dot(n, i) - n.x *center.x) / n.y;
 
 	return center;
 }
 
-float calcRadius(vec2 center, vec2 point) {
-	printf("center: %3.2f, %3.2f\npoint: %3.2f, %3.2f\n\n", center.x, center.y, point.x, point.y);
-	return sqrt(
-		(point.x - center.x) * (point.x - center.x) +
-		(point.y - center.y) * (point.y - center.y)
-	);
+void drawTriangleAt3() {
+	// Dynamicly make space for new coords 
+	int oldSize = sizeOfVertexArray;
+	sizeOfVertexArray += 6; // Longer with 3 * 2 floats
+	float* temp = new float[sizeOfVertexArray];
+
+	// Copy previous base and triangle vertices
+	for (int i = 0; i < offsetCircles * 2; i++) {
+		temp[i] = vertexArray[i];
+	}
+	// Skip 6 floats and copy circle vertices too
+	for (int i = offsetCircles * 2; i < oldSize; i++) {
+		temp[i + 6] = vertexArray[i];
+	}
+
+	// Swap pointers and delete outdated array
+	float* oldArray = vertexArray;
+	vertexArray = temp;
+	delete[] oldArray;
+
+	// Add the 3 new coordinates to the vertexArray (before circle vetices)
+	vertexArray[offsetCircles * 2 + 0] = points.at(points.size() - 3).x;
+	vertexArray[offsetCircles * 2 + 1] = points.at(points.size() - 3).y;
+	vertexArray[offsetCircles * 2 + 2] = points.at(points.size() - 2).x;
+	vertexArray[offsetCircles * 2 + 3] = points.at(points.size() - 2).y;
+	vertexArray[offsetCircles * 2 + 4] = points.at(points.size() - 1).x;
+	vertexArray[offsetCircles * 2 + 5] = points.at(points.size() - 1).y;
+
+	// TODO - remove later, this is for transparency while debugging
+	//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
+	//	printf("(%3.2f, %3.2f)\t", vertexArray[2 * i], vertexArray[2 * i + 1]);
+	//}
+}
+
+void drawCirclesAt3(SiriusTriangle triangle) {
+	// Increase offset because of new triangle before in vertexArray
+	offsetCircles += 3;
+	cntCircles += 3;
+
+	// Dynamicly make space for new coords 
+	int oldSize = sizeOfVertexArray;
+	sizeOfVertexArray += 300; // Longer with 3 * 50 * 2 floats
+	float* temp = new float[sizeOfVertexArray];
+
+	// Copy previous vertices
+	for (int i = 0; i < oldSize; i++) {
+		temp[i] = vertexArray[i];
+	}
+
+	// Swap pointers and delete outdated array
+	float* oldArray = vertexArray;
+	vertexArray = temp;
+	delete[] oldArray;
+
+	vec2 c1 = calcCenter(triangle.p1, triangle.p2);
+	vec2 c2 = calcCenter(triangle.p2, triangle.p3);
+	vec2 c3 = calcCenter(triangle.p3, triangle.p1);
+	float r1 = length(triangle.p1 - c1);
+	float r2 = length(triangle.p2 - c3);
+	float r3 = length(triangle.p3 - c3);
+
+	for (int i = 0; i < 50; i++) {
+		double phi = 2 * M_PI * i / 50;
+		vertexArray[2 * i + sizeOfVertexArray - 300] = c1.x + cos(phi) / r1;
+		vertexArray[2 * i + sizeOfVertexArray - 299] = c1.y + sin(phi) / r1;
+	}
+
+	for (int i = 0; i < 50; i++) {
+		double phi = 2 * M_PI * i / 50;
+		vertexArray[2 * i + sizeOfVertexArray - 200] = c2.x + cos(phi) / r2;
+		vertexArray[2 * i + sizeOfVertexArray - 199] = c2.y + sin(phi) / r2;
+	}
+
+	for (int i = 0; i < 50; i++) {
+		double phi = 2 * M_PI * i / 50;
+		vertexArray[2 * i + sizeOfVertexArray - 100] = c3.x + cos(phi) / r3;
+		vertexArray[2 * i + sizeOfVertexArray -  99] = c3.y + sin(phi) / r3;
+	}
+}
+
+// Mouse click event
+void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
+	// Convert to normalized device space
+	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
+	float cY = 1.0f - 2.0f * pY / windowHeight;
+	float* temp = new float[10];
+
+	char * buttonStat;
+
+	if (state == GLUT_DOWN && button == GLUT_LEFT_BUTTON) {
+		// Check if click was in the circle
+		if (length(vec2(cX, cY)) > 1) {
+			printf("Invalid point. Clink in the circle!\n");
+			return;
+		}
+
+		points.push_back(vec2(cX, cY));
+		cntClicks++;
+		
+		// TODO remove printing
+		printf("Mouse1 pressed at (%3.2f, %3.2f)\n", cX, cY);
+
+		switch (cntClicks % 3)
+		{
+		case 0:
+			triangles.push_back(
+				SiriusTriangle(
+					vec2(points.at(points.size() - 3)),
+					vec2(points.at(points.size() - 2)),
+					vec2(points.at(points.size() - 1))
+				)
+			);
+
+			for (int i = 0; i < triangles.size(); i++) {
+				printf("Points of triangle: {(%3.2f, %3.2f) (%3.2f, %3.2f) (%3.2f, %3.2f)}\n",
+					triangles[i].p1.x, triangles[i].p1.y, triangles[i].p2.x, triangles[i].p2.y, triangles[i].p3.x, triangles[i].p3.y);
+			}
+
+			// My draw function
+			drawTriangleAt3();
+			drawCirclesAt3(triangles.at(triangles.size() - 1));
+
+			// Update vertices in VRAM
+			glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
+				sizeOfVertexArray * sizeof(float),  // # bytes
+				vertexArray,	      	// address
+				GL_STATIC_DRAW);	// we do not change later
+
+			// Invalidate
+			glutPostRedisplay();
+			break;
+
+		case 1:
+			// Do nothing
+			break;
+
+		case 2:
+			vec2 p1 = points.at(points.size() - 2);
+			vec2 p2 = points.at(points.size() - 1);
+
+			vec2 center = calcCenter(p1, p2);
+			float radius = length(center - p1);
+
+
+
+			// Double and triple check - remove later
+			float radius2 = length(center - p2);
+			float radius3 = length(center - vec2(p1.x / (p1.x * p1.x + p1.y * p1.y), p1.y / (p1.x * p1.x + p1.y * p1.y)));
+			printf(
+				"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\nRadius3: %3.2f\n",
+				center.x, center.y, radius, radius2, radius3
+			);
+			printf(
+				"These should be equal:\n1 + r^2 = %3.2f\n|C| = %3.2f\n\n",
+				1 + (radius * radius), length(center)
+			);
+
+			break;
+		}
+	}
 }
 
 // Key of ASCII code pressed
@@ -188,123 +397,6 @@ void onMouseMotion(int pX, int pY) {	// pX, pY are the pixel coordinates of the 
 	//float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 	//float cY = 1.0f - 2.0f * pY / windowHeight;
 	//printf("Mouse moved to (%3.2f, %3.2f)\n", cX, cY);
-}
-
-class SiriusTriangle {
-public:
-	vec2 p1;
-	vec2 p2;
-	vec2 p3;
-
-public:
-	SiriusTriangle(float x1, float x2, float y1, float y2, float z1, float z2) {
-		p1 = vec2(x1, x2);
-		p2 = vec2(y1, y2);
-		p3 = vec2(z1, z2);
-	}
-
-	SiriusTriangle(vec2 p1, vec2 p2, vec2 p3) {
-		this->p1 = p1;
-		this->p2 = p2;
-		this->p3 = p3;
-	}
-};
-
-// My global variables
-std::vector<vec2> points;
-std::vector<SiriusTriangle> triangles;
-int clickCnt = 0;
-
-// Mouse click event
-void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
-	// Convert to normalized device space
-	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-	float cY = 1.0f - 2.0f * pY / windowHeight;
-	float* temp = new float[10];
-
-	char * buttonStat;
-
-	if (state == GLUT_DOWN && button == GLUT_LEFT_BUTTON) {
-		points.push_back(vec2(cX, cY));
-		clickCnt++;
-		
-		// TODO remove printing
-		printf("Mouse1 pressed at (%3.2f, %3.2f)\n", cX, cY);
-
-		switch (clickCnt % 3)
-		{
-		case 0:
-			break;
-		case 1:
-			break;
-		case 2:
-			vec2 p1 = points.at(points.size() - 2);
-			vec2 p2 = points.at(points.size() - 1);
-
-			vec2 center = calcCenter(p1, p2);
-			float radius = calcRadius(center, p1);
-			float radius2 = calcRadius(center, p2);
-
-			printf(
-				"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\n",
-				center.x, center.y, radius, radius2
-			);
-			break;
-		}
-		
-		if (clickCnt % 3 == 0) {
-			triangles.push_back(
-				SiriusTriangle(
-					vec2(points.at(points.size() - 3)),
-					vec2(points.at(points.size() - 2)),
-					vec2(points.at(points.size() - 1))
-				)
-			);
-
-			for (int i = 0; i < triangles.size(); i++) {
-				printf("Points of triangle: {(%3.2f, %3.2f) (%3.2f, %3.2f) (%3.2f, %3.2f)}\n",
-					triangles[i].p1.x, triangles[i].p1.y, triangles[i].p2.x, triangles[i].p2.y, triangles[i].p3.x, triangles[i].p3.y);
-			}
-
-			// Dynamicly make space for new coords 
-			int oldSize = sizeOfVertexArray;
-			sizeOfVertexArray += 6; // Longer with 3 * 2 floats
-			float* temp = new float[sizeOfVertexArray];
-
-			// Copy previous values
-			for (int i = 0; i < oldSize; i++) {
-				temp[i] = vertexArray[i];
-			}
-
-			// Swap pointers and delete outdated array
-			float* oldArray = vertexArray;
-			vertexArray = temp;
-			delete[] oldArray;
-
-			// Add the 3 new coordinates to the vertexArray
-			vertexArray[oldSize + 0] = points.at(points.size() - 3).x;
-			vertexArray[oldSize + 1] = points.at(points.size() - 3).y;
-			vertexArray[oldSize + 2] = points.at(points.size() - 2).x;
-			vertexArray[oldSize + 3] = points.at(points.size() - 2).y;
-			vertexArray[oldSize + 4] = points.at(points.size() - 1).x;
-			vertexArray[oldSize + 5] = points.at(points.size() - 1).y;
-
-			// Update vertices in VRAM
-			glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-				sizeOfVertexArray * sizeof(float),  // # bytes
-				vertexArray,	      	// address
-				GL_STATIC_DRAW);	// we do not change later
-
-			// TODO - remove later, this is for transparency while debugging
-			//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
-			//	printf("(%3.2f, %3.2f)\t", vertexArray[2 * i], vertexArray[2 * i + 1]);
-			//}
-			
-			// Invalidate
-			glutPostRedisplay();
-		}
-
-	}
 }
 
 // Idle event indicating that some time elapsed: do animation here
