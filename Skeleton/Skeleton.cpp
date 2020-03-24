@@ -183,6 +183,20 @@ void onDisplay() {
 		);
 	}
 
+	printf("%d\n", sizeOfVertexArray);
+	for (int i = 0; i < sizeOfVertexArray / 2; i++) {
+		if (i == 52)
+			printf("Circle1 coords from now on\n");
+		if (i == 52 + 100)
+			printf("Circle2 coords from now on\n");
+		if (i == 52 + 200)
+			printf("Circle3 coords from now on\n");
+		if (vertexArray[2 * i] == 0 && vertexArray[2 * i + 1] == 0)
+			printf("ORIGO");
+		
+		printf("(%3.2f; %3.2f)\n", vertexArray[2 * i], vertexArray[2 * i + 1]);
+	}
+
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
 
@@ -283,20 +297,20 @@ void drawCirclesAt3(SiriusTriangle triangle) {
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i + sizeOfVertexArray - 300] = c1.x + cos(phi) / r1;
-		vertexArray[2 * i + sizeOfVertexArray - 299] = c1.y + sin(phi) / r1;
+		vertexArray[2 * i + sizeOfVertexArray - 300] = c1.x + cos(phi) * r1;
+		vertexArray[2 * i + sizeOfVertexArray - 299] = c1.y + sin(phi) * r1;
 	}
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i + sizeOfVertexArray - 200] = c2.x + cos(phi) / r2;
-		vertexArray[2 * i + sizeOfVertexArray - 199] = c2.y + sin(phi) / r2;
+		vertexArray[2 * i + sizeOfVertexArray - 200] = c2.x + cos(phi) * r2;
+		vertexArray[2 * i + sizeOfVertexArray - 199] = c2.y + sin(phi) * r2;
 	}
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i + sizeOfVertexArray - 100] = c3.x + cos(phi) / r3;
-		vertexArray[2 * i + sizeOfVertexArray -  99] = c3.y + sin(phi) / r3;
+		vertexArray[2 * i + sizeOfVertexArray - 100] = c3.x + cos(phi) * r3;
+		vertexArray[2 * i + sizeOfVertexArray -  99] = c3.y + sin(phi) * r3;
 	}
 }
 
