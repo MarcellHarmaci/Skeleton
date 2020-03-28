@@ -59,51 +59,6 @@ const char * const fragmentSource = R"(
 	}
 )";
 
-GPUProgram gpuProgram; // vertex and fragment shaders
-unsigned int vao;	   // virtual world on the GPU
-
-int sizeOfVertexArray = 104;
-float* vertexArray = new float[sizeOfVertexArray];
-
-// Initialization, create an OpenGL context
-void onInitialization() {
-	glViewport(0, 0, windowWidth, windowHeight);
-
-	glGenVertexArrays(1, &vao);	// get 1 vao id
-	glBindVertexArray(vao);		// make it active
-
-	unsigned int vbo;		// vertex buffer object
-	glGenBuffers(1, &vbo);	// Generate 1 buffer
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	
-	// Center coordinates
-	vertexArray[0] = 0.0f;
-	vertexArray[1] = 0.0f;
-
-	// Calculate vertices of circle
-	for (int i = 1; i <= 50; i++) {
-		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i] = cos(phi);
-		vertexArray[2 * i + 1] = sin(phi);
-	}
-	// Extra point for GL_TRIANGLE_FAN to finish circle
-	vertexArray[102] = vertexArray[2];
-	vertexArray[103] = vertexArray[3];
-
-	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-		sizeOfVertexArray * sizeof(float),  // # bytes
-		vertexArray,	      	// address
-		GL_STATIC_DRAW);	// we do not change later
-
-	glEnableVertexAttribArray(0);  // AttribArray 0
-	glVertexAttribPointer(0,       // vbo -> AttribArray 0
-		2, GL_FLOAT, GL_FALSE, // two floats/attrib, not fixed-point
-		0, NULL); 		     // stride, offset: tightly packed
-
-	// create program for the GPU
-	gpuProgram.create(vertexSource, fragmentSource, "outColor");
-}
-
 class SiriusTriangle {
 public:
 	vec2 p1;
@@ -125,13 +80,79 @@ public:
 };
 
 // My global variables
-std::vector<vec2> points;
+
+// vertex and fragment shaders
+GPUProgram gpuProgram;
+
+// virtual world on the GPU
+unsigned int vao1;
+unsigned int vao2;
+
+// vertex buffer objects
+unsigned int vbo1;
+unsigned int vbo2;
+
+float* baseCircle = new float[104];
+int sizeOfVertexArray = 0;
+float* vertexArray = new float[sizeOfVertexArray];
+
+std::vector<vec2> trianglePoints;
 std::vector<SiriusTriangle> triangles;
 int cntClicks = 0;
 int cntCircles = 0;
 
-int offsetTriangles = 52;
-int offsetCircles = offsetTriangles;	// add triangles later
+// Initialization, create an OpenGL context
+void onInitialization() {
+	glViewport(0, 0, windowWidth, windowHeight);
+
+	// Generate and bind vao1 and vbo1
+	glGenVertexArrays(1, &vao1);
+	glBindVertexArray(vao1);
+	glGenBuffers(1, &vbo1);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo1);
+
+	glEnableVertexAttribArray(0);  // AttribArray 0
+	glVertexAttribPointer(0,       // vbo -> AttribArray 0
+		2, GL_FLOAT, GL_FALSE,	   // two floats/attrib, not fixed-point
+		0, NULL);				   // stride, offset: tightly packed
+	
+	// Generate and bind vao2 and vbo2
+	glGenVertexArrays(2, &vao2);
+	glBindVertexArray(vao2);
+	glGenBuffers(2, &vbo2);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
+	
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+	
+	
+	// Center coords of circle
+	baseCircle[0] = 0.0f;
+	baseCircle[1] = 0.0f;
+
+	// Calculate vertices of circle
+	for (int i = 1; i <= 50; i++) {
+		double phi = 2 * M_PI * i / (double)50;
+		baseCircle[2 * i] = (float) cos(phi);
+		baseCircle[2 * i + 1] = (float) sin(phi);
+	}
+	// Extra point for GL_TRIANGLE_FAN to finish circle
+	baseCircle[102] = baseCircle[2];
+	baseCircle[103] = baseCircle[3];
+	
+	// Rebind vao1, so base circle stores there
+	glBindVertexArray(vao1);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo1);
+
+	// Copy to GPU target
+	glBufferData(GL_ARRAY_BUFFER,
+		104 * sizeof(float),	// # of bytes
+		baseCircle,				// address
+		GL_STATIC_DRAW);		// we do not change later
+
+	// create program for the GPU
+	gpuProgram.create(vertexSource, fragmentSource, "outColor");
+}
 
 // Window has become invalid: Redraw
 void onDisplay() {
@@ -149,10 +170,10 @@ void onDisplay() {
 	int colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 1.0f, 1.0f, 1.0f); // 3 floats
 
-	// Draw call
-	glBindVertexArray(vao);
+	glBindVertexArray(vao1);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo1);
 
-	// Draw circle
+	// Draw base circle
 	glDrawArrays(
 		GL_TRIANGLE_FAN,
 		0, /*startIdx*/
@@ -162,40 +183,50 @@ void onDisplay() {
 	// Set TRIANGLE color to RED (1, 0, 0)
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f); // 3 floats
+	
+	glBindVertexArray(vao2);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
+
+	// Update vertices in VRAM
+	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
+		sizeOfVertexArray * sizeof(float),  // # bytes
+		vertexArray,	      	// address
+		GL_STATIC_DRAW);	// we do not change later
 
 	// Draw triangles
 	glDrawArrays(
 		GL_TRIANGLES,
-		offsetTriangles,
-		offsetTriangles + triangles.size() * 3
+		0,
+		sizeOfVertexArray / 2
 	);
+	
 
 	// Set circles color to GREEN
-	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-	glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f); // 3 floats
-
-	// Draw circles
-	for (int i = 0; i < cntCircles; i++) {
-		glDrawArrays(
-			GL_LINE_STRIP,
-			offsetCircles + 50 * i,
-			offsetCircles + 50 * i + 50
-		);
-	}
-
-	printf("%d\n", sizeOfVertexArray);
-	for (int i = 0; i < sizeOfVertexArray / 2; i++) {
-		if (i == 52)
-			printf("Circle1 coords from now on\n");
-		if (i == 52 + 100)
-			printf("Circle2 coords from now on\n");
-		if (i == 52 + 200)
-			printf("Circle3 coords from now on\n");
-		if (vertexArray[2 * i] == 0 && vertexArray[2 * i + 1] == 0)
-			printf("ORIGO");
-		
-		printf("(%3.2f; %3.2f)\n", vertexArray[2 * i], vertexArray[2 * i + 1]);
-	}
+	//colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+	//glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f); // 3 floats
+	//
+	//// Draw circles
+	//for (int i = 0; i < cntCircles; i++) {
+	//	glDrawArrays(
+	//		GL_LINE_STRIP,
+	//		offsetCircles + 50 * i,
+	//		offsetCircles + 50 * i + 50
+	//	);
+	//}
+	//
+	//printf("%d\n", sizeOfVertexArray);
+	//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
+	//	if (i == 52)
+	//		printf("Circle1 coords from now on\n");
+	//	if (i == 52 + 100)
+	//		printf("Circle2 coords from now on\n");
+	//	if (i == 52 + 200)
+	//		printf("Circle3 coords from now on\n");
+	//	if (vertexArray[2 * i] == 0 && vertexArray[2 * i + 1] == 0)
+	//		printf("ORIGO");
+	//	
+	//	printf("(%3.2f; %3.2f)\n", vertexArray[2 * i], vertexArray[2 * i + 1]);
+	//}
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
@@ -241,12 +272,8 @@ void drawTriangleAt3() {
 	float* temp = new float[sizeOfVertexArray];
 
 	// Copy previous base and triangle vertices
-	for (int i = 0; i < offsetCircles * 2; i++) {
+	for (int i = 0; i < oldSize; i++) {
 		temp[i] = vertexArray[i];
-	}
-	// Skip 6 floats and copy circle vertices too
-	for (int i = offsetCircles * 2; i < oldSize; i++) {
-		temp[i + 6] = vertexArray[i];
 	}
 
 	// Swap pointers and delete outdated array
@@ -255,12 +282,12 @@ void drawTriangleAt3() {
 	delete[] oldArray;
 
 	// Add the 3 new coordinates to the vertexArray (before circle vetices)
-	vertexArray[offsetCircles * 2 + 0] = points.at(points.size() - 3).x;
-	vertexArray[offsetCircles * 2 + 1] = points.at(points.size() - 3).y;
-	vertexArray[offsetCircles * 2 + 2] = points.at(points.size() - 2).x;
-	vertexArray[offsetCircles * 2 + 3] = points.at(points.size() - 2).y;
-	vertexArray[offsetCircles * 2 + 4] = points.at(points.size() - 1).x;
-	vertexArray[offsetCircles * 2 + 5] = points.at(points.size() - 1).y;
+	vertexArray[oldSize + 0] = trianglePoints.at(trianglePoints.size() - 3).x;
+	vertexArray[oldSize + 1] = trianglePoints.at(trianglePoints.size() - 3).y;
+	vertexArray[oldSize + 2] = trianglePoints.at(trianglePoints.size() - 2).x;
+	vertexArray[oldSize + 3] = trianglePoints.at(trianglePoints.size() - 2).y;
+	vertexArray[oldSize + 4] = trianglePoints.at(trianglePoints.size() - 1).x;
+	vertexArray[oldSize + 5] = trianglePoints.at(trianglePoints.size() - 1).y;
 
 	// TODO - remove later, this is for transparency while debugging
 	//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
@@ -268,6 +295,7 @@ void drawTriangleAt3() {
 	//}
 }
 
+/*
 void drawCirclesAt3(SiriusTriangle triangle) {
 	// Increase offset because of new triangle before in vertexArray
 	offsetCircles += 3;
@@ -313,15 +341,13 @@ void drawCirclesAt3(SiriusTriangle triangle) {
 		vertexArray[2 * i + sizeOfVertexArray -  99] = c3.y + sin(phi) * r3;
 	}
 }
+*/
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
 	// Convert to normalized device space
 	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 	float cY = 1.0f - 2.0f * pY / windowHeight;
-	float* temp = new float[10];
-
-	char * buttonStat;
 
 	if (state == GLUT_DOWN && button == GLUT_LEFT_BUTTON) {
 		// Check if click was in the circle
@@ -330,7 +356,7 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 			return;
 		}
 
-		points.push_back(vec2(cX, cY));
+		trianglePoints.push_back(vec2(cX, cY));
 		cntClicks++;
 		
 		// TODO remove printing
@@ -341,9 +367,9 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 		case 0:
 			triangles.push_back(
 				SiriusTriangle(
-					vec2(points.at(points.size() - 3)),
-					vec2(points.at(points.size() - 2)),
-					vec2(points.at(points.size() - 1))
+					vec2(trianglePoints.at(trianglePoints.size() - 3)),
+					vec2(trianglePoints.at(trianglePoints.size() - 2)),
+					vec2(trianglePoints.at(trianglePoints.size() - 1))
 				)
 			);
 
@@ -351,16 +377,11 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 				printf("Points of triangle: {(%3.2f, %3.2f) (%3.2f, %3.2f) (%3.2f, %3.2f)}\n",
 					triangles[i].p1.x, triangles[i].p1.y, triangles[i].p2.x, triangles[i].p2.y, triangles[i].p3.x, triangles[i].p3.y);
 			}
+			printf("\n");
 
 			// My draw function
 			drawTriangleAt3();
-			drawCirclesAt3(triangles.at(triangles.size() - 1));
-
-			// Update vertices in VRAM
-			glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-				sizeOfVertexArray * sizeof(float),  // # bytes
-				vertexArray,	      	// address
-				GL_STATIC_DRAW);	// we do not change later
+			//drawCirclesAt3(triangles.at(triangles.size() - 1));
 
 			// Invalidate
 			glutPostRedisplay();
@@ -371,8 +392,8 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 			break;
 
 		case 2:
-			vec2 p1 = points.at(points.size() - 2);
-			vec2 p2 = points.at(points.size() - 1);
+			vec2 p1 = trianglePoints.at(trianglePoints.size() - 2);
+			vec2 p2 = trianglePoints.at(trianglePoints.size() - 1);
 
 			vec2 center = calcCenter(p1, p2);
 			float radius = length(center - p1);
@@ -386,10 +407,10 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 				"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\nRadius3: %3.2f\n",
 				center.x, center.y, radius, radius2, radius3
 			);
-			printf(
-				"These should be equal:\n1 + r^2 = %3.2f\n|C| = %3.2f\n\n",
-				1 + (radius * radius), length(center)
-			);
+			//printf(
+			//	"These should be equal:\n1 + r^2 = %3.2f\n|C| = %3.2f\n\n",
+			//	1 + (radius * radius), length(center)
+			//);
 
 			break;
 		}
