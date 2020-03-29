@@ -60,6 +60,7 @@ const char * const fragmentSource = R"(
 )";
 
 // My global variables
+int cntClicks = 0;
 std::vector<vec2> clicks;
 
 // vertex and fragment shaders
@@ -68,21 +69,23 @@ GPUProgram gpuProgram;
 // virtual world on the GPU
 unsigned int vao1;
 unsigned int vao2;
+unsigned int vao3;
 
 // vertex buffer objects
 unsigned int vbo1;
 unsigned int vbo2;
+unsigned int vbo3;
 
 // vertices for vao1
 float* baseCircle = new float[104];
 
 // vertices for vao2
-int cntClicks = 0;
 int sizeOfPointArray = 0;
 float* pointVertexArray = new float[sizeOfPointArray];
 
 // vertices for vao3
-
+int sizeOfCircleArray = 0;
+float* circleVertices = new float[sizeOfCircleArray];
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -108,7 +111,15 @@ void onInitialization() {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 	
-	
+	// Generate and bind vao3 and vbo3
+	glGenVertexArrays(1, &vao3);
+	glBindVertexArray(vao3);
+	glGenBuffers(1, &vbo3);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+
 	// Center coords of circle
 	baseCircle[0] = 0.0f;
 	baseCircle[1] = 0.0f;
@@ -163,14 +174,14 @@ void onDisplay() {
 		52 /*# Elements*/
 	);
 
-	// Set POINT color to RED (1, 0, 0)
+	// Set POINT color to RED
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-	glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f); // 3 floats
+	glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
 	
 	glBindVertexArray(vao2);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
 
-	// Update vertices in VRAM
+	// Update vertices of points in VRAM
 	glBufferData(GL_ARRAY_BUFFER,			// Copy to GPU target
 		sizeOfPointArray * sizeof(float),	// # bytes
 		pointVertexArray,						// address
@@ -185,32 +196,44 @@ void onDisplay() {
 		);
 	}
 	
-	// Set circles color to GREEN
-	//colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-	//glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f); // 3 floats
-	//
-	//// Draw circles
-	//for (int i = 0; i < cntCircles; i++) {
-	//	glDrawArrays(
-	//		GL_LINE_STRIP,
-	//		offsetCircles + 50 * i,
-	//		offsetCircles + 50 * i + 50
-	//	);
-	//}
-	//
-	//printf("%d\n", sizeOfVertexArray);
-	//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
-	//	if (i == 52)
-	//		printf("Circle1 coords from now on\n");
-	//	if (i == 52 + 100)
-	//		printf("Circle2 coords from now on\n");
-	//	if (i == 52 + 200)
-	//		printf("Circle3 coords from now on\n");
-	//	if (vertexArray[2 * i] == 0 && vertexArray[2 * i + 1] == 0)
-	//		printf("ORIGO");
-	//	
-	//	printf("(%3.2f; %3.2f)\n", vertexArray[2 * i], vertexArray[2 * i + 1]);
-	//}
+	// Set CIRCLE color to GREEN
+	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+	glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
+	
+	glBindVertexArray(vao3);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3);
+
+	// Update vertices of circles in VRAM
+	glBufferData(GL_ARRAY_BUFFER,			// Copy to GPU target
+		sizeOfCircleArray * sizeof(float),	// # bytes
+		circleVertices,						// address
+		GL_STATIC_DRAW);					// we do not change later
+
+	// Draw circles
+	int numberOfTriangles = cntClicks / 3; // integer division rounds down
+	for (int i = 0; i < numberOfTriangles; i++) {
+		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
+		glDrawArrays(
+			GL_LINE_LOOP,
+			150 * i,
+			50
+		);
+		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
+		glDrawArrays(
+			GL_LINE_LOOP,
+			150 * i + 50,
+			50
+		);
+		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(colorLocation, 0.0f, 0.0f, 1.0f);
+		glDrawArrays(
+			GL_LINE_LOOP,
+			150 * i + 100,
+			50
+		);
+	}
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
@@ -256,16 +279,15 @@ void genVerticesOfPoint(float cX, float cY) {
 	float* temp = new float[sizeOfPointArray];
 	
 	// Copy previous vertices
-	for (int i = 0; i < oldSize; i++) {
+	for (int i = 0; i < oldSize; i++)
 		temp[i] = pointVertexArray[i];
-	}
 	
 	// Swap pointers and delete outdated array
 	float* oldArray = pointVertexArray;
 	pointVertexArray = temp;
 	delete[] oldArray;
 	
-	// Add the 6 new coordinates to the vertexArray
+	// Add 6 new coord pair to the vertexArray
 	pointVertexArray[oldSize +  0] = cX;
 	pointVertexArray[oldSize +  1] = cY;
 	pointVertexArray[oldSize +  2] = cX;
@@ -280,53 +302,52 @@ void genVerticesOfPoint(float cX, float cY) {
 	pointVertexArray[oldSize + 11] = cY + 0.02f;
 }
 
-/*
-void drawCirclesAt3(SiriusTriangle triangle) {
-	// Increase offset because of new triangle before in vertexArray
-	offsetCircles += 3;
-	cntCircles += 3;
-
+void genCirclesAt3() {
 	// Dynamicly make space for new coords 
-	int oldSize = sizeOfVertexArray;
-	sizeOfVertexArray += 300; // Longer with 3 * 50 * 2 floats
-	float* temp = new float[sizeOfVertexArray];
+	int oldSize = sizeOfCircleArray;
+	sizeOfCircleArray += 300; // Longer with 3 * 50 * 2 floats
+	float* temp = new float[sizeOfCircleArray];
 
 	// Copy previous vertices
-	for (int i = 0; i < oldSize; i++) {
-		temp[i] = vertexArray[i];
-	}
+	for (int i = 0; i < oldSize; i++)
+		temp[i] = circleVertices[i];
 
 	// Swap pointers and delete outdated array
-	float* oldArray = vertexArray;
-	vertexArray = temp;
+	float* oldArray = circleVertices;
+	circleVertices = temp;
 	delete[] oldArray;
 
-	vec2 c1 = calcCenter(triangle.p1, triangle.p2);
-	vec2 c2 = calcCenter(triangle.p2, triangle.p3);
-	vec2 c3 = calcCenter(triangle.p3, triangle.p1);
-	float r1 = length(triangle.p1 - c1);
-	float r2 = length(triangle.p2 - c3);
-	float r3 = length(triangle.p3 - c3);
+	int size = clicks.size();
+	vec2 p1 = clicks.at(size - 3);
+	vec2 p2 = clicks.at(size - 2);
+	vec2 p3 = clicks.at(size - 1);
+
+	vec2 c1 = calcCenter(p1, p2);
+	vec2 c2 = calcCenter(p2, p3);
+	vec2 c3 = calcCenter(p3, p1);
+
+	float r1 = length(p1 - c1);
+	float r2 = length(p2 - c2);
+	float r3 = length(p3 - c3);
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i + sizeOfVertexArray - 300] = c1.x + cos(phi) * r1;
-		vertexArray[2 * i + sizeOfVertexArray - 299] = c1.y + sin(phi) * r1;
+		circleVertices[oldSize + 2 * i + 0] = c1.x + cos(phi) * r1;
+		circleVertices[oldSize + 2 * i + 1] = c1.y + sin(phi) * r1;
 	}
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i + sizeOfVertexArray - 200] = c2.x + cos(phi) * r2;
-		vertexArray[2 * i + sizeOfVertexArray - 199] = c2.y + sin(phi) * r2;
+		circleVertices[oldSize + 2 * i + 100] = c2.x + cos(phi) * r2;
+		circleVertices[oldSize + 2 * i + 101] = c2.y + sin(phi) * r2;
 	}
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		vertexArray[2 * i + sizeOfVertexArray - 100] = c3.x + cos(phi) * r3;
-		vertexArray[2 * i + sizeOfVertexArray -  99] = c3.y + sin(phi) * r3;
+		circleVertices[oldSize + 2 * i + 200] = c3.x + cos(phi) * r3;
+		circleVertices[oldSize + 2 * i + 201] = c3.y + sin(phi) * r3;
 	}
 }
-*/
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
@@ -341,18 +362,17 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 			return;
 		}
 
+		// Save click
 		clicks.push_back(vec2(cX, cY));
 		cntClicks++;
+		// Update pointVertexArray
 		genVerticesOfPoint(cX, cY);
 
 		switch (cntClicks % 3)
 		{
 		case 0:
-			// Calculate vertices
-			//drawCirclesAt3(triangles.at(triangles.size() - 1));
-
-			// Invalidate
-			glutPostRedisplay();
+			// Update circleVertices
+			genCirclesAt3();
 			break;
 
 		case 1:
@@ -360,22 +380,12 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 			break;
 
 		case 2:
-			//vec2 p1 = trianglePoints.at(trianglePoints.size() - 2);
-			//vec2 p2 = trianglePoints.at(trianglePoints.size() - 1);
-			//
-			//vec2 center = calcCenter(p1, p2);
-			//float radius = length(center - p1);
-			//
-			//// Double and triple check - remove later
-			//float radius2 = length(center - p2);
-			//float radius3 = length(center - vec2(p1.x / (p1.x * p1.x + p1.y * p1.y), p1.y / (p1.x * p1.x + p1.y * p1.y)));
-			//printf(
-			//	"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\nRadius3: %3.2f\n",
-			//	center.x, center.y, radius, radius2, radius3
-			//);
+			// Do nothing
 			break;
 		}
 
+		// Invalidate
+		glutPostRedisplay();
 	}
 }
 
