@@ -59,27 +59,8 @@ const char * const fragmentSource = R"(
 	}
 )";
 
-class SiriusTriangle {
-public:
-	vec2 p1;
-	vec2 p2;
-	vec2 p3;
-
-public:
-	SiriusTriangle(float x1, float x2, float y1, float y2, float z1, float z2) {
-		p1 = vec2(x1, x2);
-		p2 = vec2(y1, y2);
-		p3 = vec2(z1, z2);
-	}
-
-	SiriusTriangle(vec2 p1, vec2 p2, vec2 p3) {
-		this->p1 = p1;
-		this->p2 = p2;
-		this->p3 = p3;
-	}
-};
-
 // My global variables
+std::vector<vec2> clicks;
 
 // vertex and fragment shaders
 GPUProgram gpuProgram;
@@ -92,14 +73,16 @@ unsigned int vao2;
 unsigned int vbo1;
 unsigned int vbo2;
 
+// vertices for vao1
 float* baseCircle = new float[104];
-int sizeOfVertexArray = 0;
-float* vertexArray = new float[sizeOfVertexArray];
 
-std::vector<vec2> trianglePoints;
-std::vector<SiriusTriangle> triangles;
+// vertices for vao2
 int cntClicks = 0;
-int cntCircles = 0;
+int sizeOfPointArray = 0;
+float* pointVertexArray = new float[sizeOfPointArray];
+
+// vertices for vao3
+
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -117,9 +100,9 @@ void onInitialization() {
 		0, NULL);				   // stride, offset: tightly packed
 	
 	// Generate and bind vao2 and vbo2
-	glGenVertexArrays(2, &vao2);
+	glGenVertexArrays(1, &vao2);
 	glBindVertexArray(vao2);
-	glGenBuffers(2, &vbo2);
+	glGenBuffers(1, &vbo2);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
 	
 	glEnableVertexAttribArray(0);
@@ -166,9 +149,9 @@ void onDisplay() {
 	int location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
 	glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
 
-	// Set CIRCLE color to WHITE (1, 1, 1)
+	// Set BASE CIRCLE color to GREY
 	int colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-	glUniform3f(colorLocation, 1.0f, 1.0f, 1.0f); // 3 floats
+	glUniform3f(colorLocation, 0.2f, 0.2f, 0.2f); // 3 floats
 
 	glBindVertexArray(vao1);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo1);
@@ -180,7 +163,7 @@ void onDisplay() {
 		52 /*# Elements*/
 	);
 
-	// Set TRIANGLE color to RED (1, 0, 0)
+	// Set POINT color to RED (1, 0, 0)
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f); // 3 floats
 	
@@ -188,19 +171,20 @@ void onDisplay() {
 	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
 
 	// Update vertices in VRAM
-	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-		sizeOfVertexArray * sizeof(float),  // # bytes
-		vertexArray,	      	// address
-		GL_STATIC_DRAW);	// we do not change later
+	glBufferData(GL_ARRAY_BUFFER,			// Copy to GPU target
+		sizeOfPointArray * sizeof(float),	// # bytes
+		pointVertexArray,						// address
+		GL_STATIC_DRAW);					// we do not change later
 
-	// Draw triangles
-	glDrawArrays(
-		GL_TRIANGLES,
-		0,
-		sizeOfVertexArray / 2
-	);
+	// Draw points
+	for (int i = 0; i < cntClicks; i++) {
+		glDrawArrays(
+			GL_TRIANGLE_FAN,
+			i * 6,
+			6
+		);
+	}
 	
-
 	// Set circles color to GREEN
 	//colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	//glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f); // 3 floats
@@ -265,34 +249,35 @@ vec2 calcCenter(vec2 p1, vec2 p2) {
 	return center;
 }
 
-void drawTriangleAt3() {
+void genVerticesOfPoint(float cX, float cY) {
 	// Dynamicly make space for new coords 
-	int oldSize = sizeOfVertexArray;
-	sizeOfVertexArray += 6; // Longer with 3 * 2 floats
-	float* temp = new float[sizeOfVertexArray];
-
-	// Copy previous base and triangle vertices
+	int oldSize = sizeOfPointArray;
+	sizeOfPointArray += 12; // Longer with 6 * 2 floats
+	float* temp = new float[sizeOfPointArray];
+	
+	// Copy previous vertices
 	for (int i = 0; i < oldSize; i++) {
-		temp[i] = vertexArray[i];
+		temp[i] = pointVertexArray[i];
 	}
-
+	
 	// Swap pointers and delete outdated array
-	float* oldArray = vertexArray;
-	vertexArray = temp;
+	float* oldArray = pointVertexArray;
+	pointVertexArray = temp;
 	delete[] oldArray;
-
-	// Add the 3 new coordinates to the vertexArray (before circle vetices)
-	vertexArray[oldSize + 0] = trianglePoints.at(trianglePoints.size() - 3).x;
-	vertexArray[oldSize + 1] = trianglePoints.at(trianglePoints.size() - 3).y;
-	vertexArray[oldSize + 2] = trianglePoints.at(trianglePoints.size() - 2).x;
-	vertexArray[oldSize + 3] = trianglePoints.at(trianglePoints.size() - 2).y;
-	vertexArray[oldSize + 4] = trianglePoints.at(trianglePoints.size() - 1).x;
-	vertexArray[oldSize + 5] = trianglePoints.at(trianglePoints.size() - 1).y;
-
-	// TODO - remove later, this is for transparency while debugging
-	//for (int i = 0; i < sizeOfVertexArray / 2; i++) {
-	//	printf("(%3.2f, %3.2f)\t", vertexArray[2 * i], vertexArray[2 * i + 1]);
-	//}
+	
+	// Add the 6 new coordinates to the vertexArray
+	pointVertexArray[oldSize +  0] = cX;
+	pointVertexArray[oldSize +  1] = cY;
+	pointVertexArray[oldSize +  2] = cX;
+	pointVertexArray[oldSize +  3] = cY + 0.02f;
+	pointVertexArray[oldSize +  4] = cX + 0.02f;
+	pointVertexArray[oldSize +  5] = cY;
+	pointVertexArray[oldSize +  6] = cX;
+	pointVertexArray[oldSize +  7] = cY - 0.02f;
+	pointVertexArray[oldSize +  8] = cX - 0.02f;
+	pointVertexArray[oldSize +  9] = cY;
+	pointVertexArray[oldSize + 10] = cX;
+	pointVertexArray[oldSize + 11] = cY + 0.02f;
 }
 
 /*
@@ -356,31 +341,14 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 			return;
 		}
 
-		trianglePoints.push_back(vec2(cX, cY));
+		clicks.push_back(vec2(cX, cY));
 		cntClicks++;
-		
-		// TODO remove printing
-		printf("Mouse1 pressed at (%3.2f, %3.2f)\n", cX, cY);
+		genVerticesOfPoint(cX, cY);
 
 		switch (cntClicks % 3)
 		{
 		case 0:
-			triangles.push_back(
-				SiriusTriangle(
-					vec2(trianglePoints.at(trianglePoints.size() - 3)),
-					vec2(trianglePoints.at(trianglePoints.size() - 2)),
-					vec2(trianglePoints.at(trianglePoints.size() - 1))
-				)
-			);
-
-			for (int i = 0; i < triangles.size(); i++) {
-				printf("Points of triangle: {(%3.2f, %3.2f) (%3.2f, %3.2f) (%3.2f, %3.2f)}\n",
-					triangles[i].p1.x, triangles[i].p1.y, triangles[i].p2.x, triangles[i].p2.y, triangles[i].p3.x, triangles[i].p3.y);
-			}
-			printf("\n");
-
-			// My draw function
-			drawTriangleAt3();
+			// Calculate vertices
 			//drawCirclesAt3(triangles.at(triangles.size() - 1));
 
 			// Invalidate
@@ -392,28 +360,22 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 			break;
 
 		case 2:
-			vec2 p1 = trianglePoints.at(trianglePoints.size() - 2);
-			vec2 p2 = trianglePoints.at(trianglePoints.size() - 1);
-
-			vec2 center = calcCenter(p1, p2);
-			float radius = length(center - p1);
-
-
-
-			// Double and triple check - remove later
-			float radius2 = length(center - p2);
-			float radius3 = length(center - vec2(p1.x / (p1.x * p1.x + p1.y * p1.y), p1.y / (p1.x * p1.x + p1.y * p1.y)));
-			printf(
-				"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\nRadius3: %3.2f\n",
-				center.x, center.y, radius, radius2, radius3
-			);
+			//vec2 p1 = trianglePoints.at(trianglePoints.size() - 2);
+			//vec2 p2 = trianglePoints.at(trianglePoints.size() - 1);
+			//
+			//vec2 center = calcCenter(p1, p2);
+			//float radius = length(center - p1);
+			//
+			//// Double and triple check - remove later
+			//float radius2 = length(center - p2);
+			//float radius3 = length(center - vec2(p1.x / (p1.x * p1.x + p1.y * p1.y), p1.y / (p1.x * p1.x + p1.y * p1.y)));
 			//printf(
-			//	"These should be equal:\n1 + r^2 = %3.2f\n|C| = %3.2f\n\n",
-			//	1 + (radius * radius), length(center)
+			//	"Center: (%3.2f, %3.2f)\nRadius1: %3.2f\nRadius2: %3.2f\nRadius3: %3.2f\n",
+			//	center.x, center.y, radius, radius2, radius3
 			//);
-
 			break;
 		}
+
 	}
 }
 
@@ -427,11 +389,7 @@ void onKeyboardUp(unsigned char key, int pX, int pY) {
 }
 
 // Move mouse with key pressed
-void onMouseMotion(int pX, int pY) {	// pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
-	// Convert to normalized device space
-	//float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-	//float cY = 1.0f - 2.0f * pY / windowHeight;
-	//printf("Mouse moved to (%3.2f, %3.2f)\n", cX, cY);
+void onMouseMotion(int pX, int pY) {
 }
 
 // Idle event indicating that some time elapsed: do animation here
