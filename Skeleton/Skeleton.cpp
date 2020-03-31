@@ -215,21 +215,21 @@ void onDisplay() {
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
 		glDrawArrays(
-			GL_LINE_LOOP,
+			GL_LINE_STRIP,
 			150 * i,
 			50
 		);
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 		glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
 		glDrawArrays(
-			GL_LINE_LOOP,
+			GL_LINE_STRIP,
 			150 * i + 50,
 			50
 		);
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 		glUniform3f(colorLocation, 0.0f, 0.0f, 1.0f);
 		glDrawArrays(
-			GL_LINE_LOOP,
+			GL_LINE_STRIP,
 			150 * i + 100,
 			50
 		);
@@ -302,6 +302,35 @@ void genVerticesOfPoint(float cX, float cY) {
 	pointVertexArray[oldSize + 11] = cY + 0.02f;
 }
 
+vec2* genCircleSegment(vec2 p1, vec2 p2, vec2 c, float r) {
+	vec2* segment = new vec2[50];
+
+	// Generate line segments
+	for (int i = 0; i < 50; i++) {
+		float t = (float)i / (float)49;
+		segment[i] = p1 * t + p2 * (1 - t);
+	}
+
+	// Project segment onto circle
+	for (int i = 0; i < 50; i++) {
+		segment[i] = c + normalize(segment[i] - c) * r;
+	}
+
+	return segment;
+}
+
+vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
+	float r1 = radiuses.x;
+	float r2 = radiuses.y;
+	float r3 = radiuses.z;
+
+	return vec3(
+		acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
+		acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
+		acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
+	);
+}
+
 void genCirclesAt3() {
 	// Dynamicly make space for new coords 
 	int oldSize = sizeOfCircleArray;
@@ -330,23 +359,34 @@ void genCirclesAt3() {
 	float r2 = length(p2 - c2);
 	float r3 = length(p3 - c3);
 
+	vec2* segment1 = genCircleSegment(p1, p2, c1, r1);
+	vec2* segment2 = genCircleSegment(p2, p3, c2, r2);
+	vec2* segment3 = genCircleSegment(p3, p1, c3, r3);
+
+	vec3 angles = calcAngles(c1, c2, c3, vec3(r1, r2, r3));
+	//printf("Angles:\nalpha: %3.2f\nbeta:  %3.2f\ngamma: %3.2f\n\n", angles.x, angles.y, angles.z);
+
+	// Put segments into circleVertices
 	for (int i = 0; i < 50; i++) {
-		double phi = 2 * M_PI * i / 50;
-		circleVertices[oldSize + 2 * i + 0] = c1.x + cos(phi) * r1;
-		circleVertices[oldSize + 2 * i + 1] = c1.y + sin(phi) * r1;
+		circleVertices[oldSize + 2 * i + 0] = segment1[i].x;
+		circleVertices[oldSize + 2 * i + 1] = segment1[i].y;
 	}
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		circleVertices[oldSize + 2 * i + 100] = c2.x + cos(phi) * r2;
-		circleVertices[oldSize + 2 * i + 101] = c2.y + sin(phi) * r2;
+		circleVertices[oldSize + 2 * i + 100] = segment2[i].x;
+		circleVertices[oldSize + 2 * i + 101] = segment2[i].y;
 	}
 
 	for (int i = 0; i < 50; i++) {
 		double phi = 2 * M_PI * i / 50;
-		circleVertices[oldSize + 2 * i + 200] = c3.x + cos(phi) * r3;
-		circleVertices[oldSize + 2 * i + 201] = c3.y + sin(phi) * r3;
+		circleVertices[oldSize + 2 * i + 200] = segment3[i].x;
+		circleVertices[oldSize + 2 * i + 201] = segment3[i].y;
 	}
+
+	delete[] segment1;
+	delete[] segment2;
+	delete[] segment3;
 }
 
 // Mouse click event
