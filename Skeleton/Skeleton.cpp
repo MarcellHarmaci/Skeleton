@@ -227,7 +227,7 @@ void onDisplay() {
 			50
 		);
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(colorLocation, 0.0f, 0.0f, 1.0f);
+		glUniform3f(colorLocation, 0.0f, 0.7f, 1.0f);
 		glDrawArrays(
 			GL_LINE_STRIP,
 			150 * i + 100,
@@ -319,16 +319,43 @@ vec2* genCircleSegment(vec2 p1, vec2 p2, vec2 c, float r) {
 	return segment;
 }
 
+// Cos tetelbol kifejezve a szöget
 vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
 	float r1 = radiuses.x;
 	float r2 = radiuses.y;
 	float r3 = radiuses.z;
 
 	return vec3(
-		acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
-		acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
-		acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
+		180 - acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
+		180 - acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
+		180 - acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
 	);
+}
+
+vec3 calcSegmentLengths(vec2 p1, vec2 p2, vec2 p3, vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
+	float r1 = radiuses.x;
+	float r2 = radiuses.y;
+	float r3 = radiuses.z;
+
+	float angle1 = atan2f(p1.x - c1.x, p1.y - c1.y);
+	float angle2 = atan2f(p2.x - c1.x, p2.y - c1.y);
+	float diff1 = angle2 - angle1;
+	if (diff1 < 0) diff1 *= -1;
+	if (diff1 > M_PI) diff1 = 2 * M_PI - diff1;
+
+	angle1 = atan2f(p2.x - c2.x, p2.y - c2.y);
+	angle2 = atan2f(p3.x - c2.x, p3.y - c2.y);
+	float diff2 = angle2 - angle1;
+	if (diff2 < 0) diff2 *= -1;
+	if (diff2 > M_PI) diff2 = 2 * M_PI - diff2;
+
+	angle1 = atan2f(p3.x - c3.x, p3.y - c3.y);
+	angle2 = atan2f(p1.x - c3.x, p1.y - c3.y);
+	float diff3 = angle2 - angle1;
+	if (diff3 < 0) diff3 *= -1;
+	if (diff3 > M_PI) diff3 = 2 * M_PI - diff3;
+
+	return vec3(r1 * diff1, r2 * diff2, r3 * diff3);
 }
 
 void genCirclesAt3() {
@@ -364,7 +391,10 @@ void genCirclesAt3() {
 	vec2* segment3 = genCircleSegment(p3, p1, c3, r3);
 
 	vec3 angles = calcAngles(c1, c2, c3, vec3(r1, r2, r3));
-	//printf("Angles:\nalpha: %3.2f\nbeta:  %3.2f\ngamma: %3.2f\n\n", angles.x, angles.y, angles.z);
+	printf("Angles:\nalpha: %3.2f\nbeta:  %3.2f\ngamma: %3.2f\n\n", angles.x, angles.y, angles.z);
+
+	vec3 lengths = calcSegmentLengths(p1, p2, p3, c1, c2, c3, vec3(r1, r2, r3));
+	printf("Lenghts:\nSide1: %3.2f\nSide2: %3.2f\nSide3: %3.2f\n-------------\n", lengths.x, lengths.y, lengths.z);
 
 	// Put segments into circleVertices
 	for (int i = 0; i < 50; i++) {
