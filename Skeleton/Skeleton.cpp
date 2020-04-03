@@ -59,9 +59,117 @@ const char * const fragmentSource = R"(
 	}
 )";
 
+boolean intersect(vec2 x1, vec2 x2, vec2 y1, vec2 y2) {
+	vec2 xNormal = vec2(x1.y - x2.y, x2.x - x1.x);
+	vec2 yNormal = vec2(y1.y - y2.y, y2.x - y1.x);
+
+	boolean diffSide1 = dot(xNormal, (y1 - x1)) * dot(xNormal, (y2 - x1)) < 0;
+	boolean diffSide2 = dot(yNormal, (x1 - y1)) * dot(yNormal, (x2 - y1)) < 0;
+
+	return diffSide1 && diffSide2;
+}
+
+std::vector<vec2> drawPoly;
+
+class MyPoly {
+public:
+	std::vector<vec2> vertices;
+
+	MyPoly(vec2* sideA, int sizeA, vec2* sideB, int sizeB, vec2* sideC, int sizeC) {
+		for (int i = 0; i < sizeA; i++) {
+			vertices.push_back(sideA[i]);
+		}
+		for (int i = 0; i < sizeB; i++) {
+			vertices.push_back(sideB[i]);
+		}
+		for (int i = 0; i < sizeC; i++) {
+			vertices.push_back(sideC[i]);
+		}
+	}
+
+	//~MyPoly() {
+	//	delete[] vertices;
+	//}
+
+	boolean intersectAny(int idx, vec2 prev, vec2 next) {
+		for (int i = 0; i < vertices.size() - 2; i++) {
+			if (i == idx || i - 1 == idx)
+				continue;
+			if (intersect(prev, next, vertices.at(i), vertices.at(i + 1)))
+				return true;
+		}
+		if (intersect(prev, next, vertices.at(vertices.size() - 1), vertices.at(0)))
+			return true;
+
+		return false;
+	}
+
+	int cntIntersect(vec2 x, vec2 y) {
+		int cnt = 0;
+
+		for (int i = 0; i < vertices.size() - 2; i++) {
+			if (intersect(x, y, vertices.at(i), vertices.at(i + 1)))
+				cnt++;
+		}
+		if (intersect(x, y, vertices.at(vertices.size() - 1), vertices.at(0)))
+			cnt++;
+
+		return cnt;
+	}
+
+	vec2* getPrevNext(int idx) {
+		vec2 prevNext[2];
+		int size = vertices.size();
+
+		if (idx == 0) {
+			prevNext[0] = vertices.at(size - 1);
+			prevNext[1] = vertices.at(1);
+		}
+		else if (idx == size - 1) {
+			prevNext[0] = vertices.at(size - 2);
+			prevNext[1] = vertices.at(0);
+		}
+		else {
+			prevNext[0] = vertices.at(idx - 1);
+			prevNext[1] = vertices.at(idx + 1);
+		}
+
+		return prevNext;
+	}
+
+	boolean isEar(int idx) {
+		vec2* prevAndNext = getPrevNext(idx);
+		vec2 prev = prevAndNext[0];
+		vec2 next = prevAndNext[1];
+
+		if (intersectAny(idx, prev, next))
+			return false;
+		
+		vec2 mid = (prev + next) / 2.0f;
+		vec2 inf = vec2(1.0f, 1.0f);
+
+		if (cntIntersect(mid, inf) % 2 == 0)
+			return false;
+
+		return true;
+	}
+
+	void cut(int idx) {
+		vec2* prevAndNext = getPrevNext(idx);
+	
+		drawPoly.push_back(vertices.at(idx));
+		drawPoly.push_back(prevAndNext[0]);
+		drawPoly.push_back(prevAndNext[1]);
+
+		vertices.erase(vertices.begin() + idx);
+	}
+
+};
+
 // My global variables
 int cntClicks = 0;
 std::vector<vec2> clicks;
+std::vector<MyPoly> triangles;
 
 // vertex and fragment shaders
 GPUProgram gpuProgram;
@@ -70,11 +178,13 @@ GPUProgram gpuProgram;
 unsigned int vao1;
 unsigned int vao2;
 unsigned int vao3;
+unsigned int vao4;
 
 // vertex buffer objects
 unsigned int vbo1;
 unsigned int vbo2;
 unsigned int vbo3;
+unsigned int vbo4;
 
 // vertices for vao1
 float* baseCircle = new float[104];
@@ -116,6 +226,15 @@ void onInitialization() {
 	glBindVertexArray(vao3);
 	glGenBuffers(1, &vbo3);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo3);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+
+	// Generate and bind vao4 and vbo4
+	glGenVertexArrays(1, &vao4);
+	glBindVertexArray(vao4);
+	glGenBuffers(1, &vbo4);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo4);
 
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
@@ -184,7 +303,7 @@ void onDisplay() {
 	// Update vertices of points in VRAM
 	glBufferData(GL_ARRAY_BUFFER,			// Copy to GPU target
 		sizeOfPointArray * sizeof(float),	// # bytes
-		pointVertexArray,						// address
+		pointVertexArray,					// address
 		GL_STATIC_DRAW);					// we do not change later
 
 	// Draw points
@@ -195,6 +314,26 @@ void onDisplay() {
 			6
 		);
 	}
+
+	// Set TRIANGLE color to BLUE
+	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+	glUniform3f(colorLocation, 0.0f, 0.7f, 1.0f);
+
+	glBindVertexArray(vao4);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo4);
+
+	// Update vertices of TRIANGLES in VRAM
+	glBufferData(GL_ARRAY_BUFFER,					// Copy to GPU target
+		sizeof(drawPoly.at(0)) * drawPoly.size(),	// # bytes
+		drawPoly.data(),							// address
+		GL_STATIC_DRAW);							// we do not change later
+
+	// Draw triangles
+	glDrawArrays(
+		GL_TRIANGLES,
+		0, /*startIdx*/
+		drawPoly.size() /*# Elements*/
+	);
 	
 	// Set CIRCLE color to GREEN
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
@@ -213,6 +352,13 @@ void onDisplay() {
 	int numberOfTriangles = cntClicks / 3; // integer division rounds down
 	for (int i = 0; i < numberOfTriangles; i++) {
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
+		glDrawArrays(
+			GL_LINE_LOOP,
+			150 * i,
+			150
+		);
+		/*
 		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
 		glDrawArrays(
 			GL_LINE_STRIP,
@@ -220,19 +366,20 @@ void onDisplay() {
 			50
 		);
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
+		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
 		glDrawArrays(
 			GL_LINE_STRIP,
 			150 * i + 50,
 			50
 		);
 		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(colorLocation, 0.0f, 0.7f, 1.0f);
+		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
 		glDrawArrays(
 			GL_LINE_STRIP,
 			150 * i + 100,
 			50
 		);
+		*/
 	}
 
 	glutSwapBuffers(); // exchange buffers for double buffering
@@ -272,6 +419,46 @@ vec2 calcCenter(vec2 p1, vec2 p2) {
 	return center;
 }
 
+// Cos tetelbol kifejezve a szöget
+vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
+	float r1 = radiuses.x;
+	float r2 = radiuses.y;
+	float r3 = radiuses.z;
+
+	return vec3(
+		180 - acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
+		180 - acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
+		180 - acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
+	);
+}
+
+// TODO - Rewrite to adding tiny segment lengths to a sum
+vec3 calcSegmentLengths(vec2 p1, vec2 p2, vec2 p3, vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
+	float r1 = radiuses.x;
+	float r2 = radiuses.y;
+	float r3 = radiuses.z;
+
+	float angle1 = atan2f(p1.x - c1.x, p1.y - c1.y);
+	float angle2 = atan2f(p2.x - c1.x, p2.y - c1.y);
+	float diff1 = angle2 - angle1;
+	if (diff1 < 0) diff1 *= -1;
+	if (diff1 > M_PI) diff1 = 2 * M_PI - diff1;
+
+	angle1 = atan2f(p2.x - c2.x, p2.y - c2.y);
+	angle2 = atan2f(p3.x - c2.x, p3.y - c2.y);
+	float diff2 = angle2 - angle1;
+	if (diff2 < 0) diff2 *= -1;
+	if (diff2 > M_PI) diff2 = 2 * M_PI - diff2;
+
+	angle1 = atan2f(p3.x - c3.x, p3.y - c3.y);
+	angle2 = atan2f(p1.x - c3.x, p1.y - c3.y);
+	float diff3 = angle2 - angle1;
+	if (diff3 < 0) diff3 *= -1;
+	if (diff3 > M_PI) diff3 = 2 * M_PI - diff3;
+
+	return vec3(r1 * diff1, r2 * diff2, r3 * diff3);
+}
+
 void genVerticesOfPoint(float cX, float cY) {
 	// Dynamicly make space for new coords 
 	int oldSize = sizeOfPointArray;
@@ -307,8 +494,8 @@ vec2* genCircleSegment(vec2 p1, vec2 p2, vec2 c, float r) {
 
 	// Generate line segments
 	for (int i = 0; i < 50; i++) {
-		float t = (float)i / (float)49;
-		segment[i] = p1 * t + p2 * (1 - t);
+		float t = (float)i / (float)50;
+		segment[i] = p1 * (1 - t) + p2 * t;
 	}
 
 	// Project segment onto circle
@@ -317,45 +504,6 @@ vec2* genCircleSegment(vec2 p1, vec2 p2, vec2 c, float r) {
 	}
 
 	return segment;
-}
-
-// Cos tetelbol kifejezve a szöget
-vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
-	float r1 = radiuses.x;
-	float r2 = radiuses.y;
-	float r3 = radiuses.z;
-
-	return vec3(
-		180 - acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
-		180 - acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
-		180 - acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
-	);
-}
-
-vec3 calcSegmentLengths(vec2 p1, vec2 p2, vec2 p3, vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
-	float r1 = radiuses.x;
-	float r2 = radiuses.y;
-	float r3 = radiuses.z;
-
-	float angle1 = atan2f(p1.x - c1.x, p1.y - c1.y);
-	float angle2 = atan2f(p2.x - c1.x, p2.y - c1.y);
-	float diff1 = angle2 - angle1;
-	if (diff1 < 0) diff1 *= -1;
-	if (diff1 > M_PI) diff1 = 2 * M_PI - diff1;
-
-	angle1 = atan2f(p2.x - c2.x, p2.y - c2.y);
-	angle2 = atan2f(p3.x - c2.x, p3.y - c2.y);
-	float diff2 = angle2 - angle1;
-	if (diff2 < 0) diff2 *= -1;
-	if (diff2 > M_PI) diff2 = 2 * M_PI - diff2;
-
-	angle1 = atan2f(p3.x - c3.x, p3.y - c3.y);
-	angle2 = atan2f(p1.x - c3.x, p1.y - c3.y);
-	float diff3 = angle2 - angle1;
-	if (diff3 < 0) diff3 *= -1;
-	if (diff3 > M_PI) diff3 = 2 * M_PI - diff3;
-
-	return vec3(r1 * diff1, r2 * diff2, r3 * diff3);
 }
 
 void genCirclesAt3() {
@@ -390,6 +538,9 @@ void genCirclesAt3() {
 	vec2* segment2 = genCircleSegment(p2, p3, c2, r2);
 	vec2* segment3 = genCircleSegment(p3, p1, c3, r3);
 
+	triangles.push_back(MyPoly(segment1, 50, segment2, 50, segment3, 50));
+
+
 	vec3 angles = calcAngles(c1, c2, c3, vec3(r1, r2, r3));
 	printf("Angles:\nalpha: %3.2f\nbeta:  %3.2f\ngamma: %3.2f\n\n", angles.x, angles.y, angles.z);
 
@@ -419,11 +570,22 @@ void genCirclesAt3() {
 	delete[] segment3;
 }
 
+void earCutter(MyPoly poly) {
+	while (poly.vertices.size() > 3) {
+		for (int i = 0; i < poly.vertices.size(); i++) {
+			if (poly.isEar(i)) {
+				poly.cut(i);
+				break;
+			}
+		}
+	}
+}
+
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
 	// Convert to normalized device space
 	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-	float cY = 1.0f - 2.0f * pY / windowHeight;
+	float cY = 1.0f - 2.0f * pY / windowHeight;	
 
 	if (state == GLUT_DOWN && button == GLUT_LEFT_BUTTON) {
 		// Check if click was in the circle
@@ -438,20 +600,10 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 		// Update pointVertexArray
 		genVerticesOfPoint(cX, cY);
 
-		switch (cntClicks % 3)
-		{
-		case 0:
+		if (cntClicks % 3 == 0) {
 			// Update circleVertices
 			genCirclesAt3();
-			break;
-
-		case 1:
-			// Do nothing
-			break;
-
-		case 2:
-			// Do nothing
-			break;
+			earCutter(triangles.at(cntClicks / 3 - 1));
 		}
 
 		// Invalidate
