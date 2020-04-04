@@ -34,7 +34,7 @@
 #include "framework.h"
 
 // vertex shader in GLSL: It is a Raw string (C++11) since it contains new line characters
-const char * const vertexSource = R"(
+const char* const vertexSource = R"(
 	#version 330				// Shader 3.3
 	precision highp float;		// normal floats, makes no difference on desktop computers
 
@@ -47,7 +47,7 @@ const char * const vertexSource = R"(
 )";
 
 // fragment shader in GLSL
-const char * const fragmentSource = R"(
+const char* const fragmentSource = R"(
 	#version 330			// Shader 3.3
 	precision highp float;	// normal floats, makes no difference on desktop computers
 	
@@ -144,7 +144,7 @@ public:
 
 		if (intersectAny(idx, prev, next))
 			return false;
-		
+
 		vec2 mid = (prev + next) / 2.0f;
 		vec2 inf = vec2(1.0f, 1.0f);
 
@@ -156,13 +156,36 @@ public:
 
 	void cut(int idx) {
 		vec2* prevAndNext = getPrevNext(idx);
-	
+
 		drawPoly.push_back(vertices.at(idx));
 		drawPoly.push_back(prevAndNext[0]);
 		drawPoly.push_back(prevAndNext[1]);
 
 		vertices.erase(vertices.begin() + idx);
 	}
+
+	vec3 calcSides(int beginB, int beginC) {
+		float lengthA = 0.0f;
+		float lengthB = 0.0f;
+		float lengthC = 0.0f;
+
+		for (int i = 0; i < beginB; i++) {
+			lengthA += length(vertices.at(i + 1) - vertices.at(i));
+		}
+		for (int i = beginB; i < beginC; i++) {
+			lengthB += length(vertices.at(i + 1) - vertices.at(i));
+		}
+		int size = vertices.size();
+		for (int i = beginC; i < size - 2; i++) {
+			lengthC += length(vertices.at(i + 1) - vertices.at(i));
+		}
+		lengthC += length(vertices.at(size - 1) - vertices.at(0));
+
+		return vec3(lengthA, lengthB, lengthC);
+	}
+
+	// TODO - Implement function
+	vec3 calcAngles() {}
 
 };
 
@@ -211,16 +234,16 @@ void onInitialization() {
 	glVertexAttribPointer(0,       // vbo -> AttribArray 0
 		2, GL_FLOAT, GL_FALSE,	   // two floats/attrib, not fixed-point
 		0, NULL);				   // stride, offset: tightly packed
-	
+
 	// Generate and bind vao2 and vbo2
 	glGenVertexArrays(1, &vao2);
 	glBindVertexArray(vao2);
 	glGenBuffers(1, &vbo2);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
-	
+
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-	
+
 	// Generate and bind vao3 and vbo3
 	glGenVertexArrays(1, &vao3);
 	glBindVertexArray(vao3);
@@ -246,13 +269,13 @@ void onInitialization() {
 	// Calculate vertices of circle
 	for (int i = 1; i <= 50; i++) {
 		double phi = 2 * M_PI * i / (double)50;
-		baseCircle[2 * i] = (float) cos(phi);
-		baseCircle[2 * i + 1] = (float) sin(phi);
+		baseCircle[2 * i] = (float)cos(phi);
+		baseCircle[2 * i + 1] = (float)sin(phi);
 	}
 	// Extra point for GL_TRIANGLE_FAN to finish circle
 	baseCircle[102] = baseCircle[2];
 	baseCircle[103] = baseCircle[3];
-	
+
 	// Rebind vao1, so base circle stores there
 	glBindVertexArray(vao1);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo1);
@@ -296,7 +319,7 @@ void onDisplay() {
 	// Set POINT color to RED
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
-	
+
 	glBindVertexArray(vao2);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo2);
 
@@ -334,11 +357,18 @@ void onDisplay() {
 		0, /*startIdx*/
 		drawPoly.size() /*# Elements*/
 	);
-	
+
 	// Set CIRCLE color to GREEN
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
-	
+
+	// Fun part shows how ear cutter works
+	//glDrawArrays(
+	//	GL_LINE_LOOP,
+	//	0, /*startIdx*/
+	//	drawPoly.size() /*# Elements*/
+	//);
+
 	glBindVertexArray(vao3);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo3);
 
@@ -414,12 +444,13 @@ vec2 calcCenter(vec2 p1, vec2 p2) {
 
 	vec2 center = vec2();
 	center.x = (n.y * dot(m, j) - m.y * dot(n, i)) / (n.y * m.x - n.x * m.y);
-	center.y = (dot(n, i) - n.x *center.x) / n.y;
+	center.y = (dot(n, i) - n.x * center.x) / n.y;
 
 	return center;
 }
 
 // Cos tetelbol kifejezve a szöget
+// TODO - Move to MyPoly, Rewrite and Remove this
 vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
 	float r1 = radiuses.x;
 	float r2 = radiuses.y;
@@ -432,7 +463,7 @@ vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
 	);
 }
 
-// TODO - Rewrite to adding tiny segment lengths to a sum
+// TODO - Remove function
 vec3 calcSegmentLengths(vec2 p1, vec2 p2, vec2 p3, vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
 	float r1 = radiuses.x;
 	float r2 = radiuses.y;
@@ -464,27 +495,27 @@ void genVerticesOfPoint(float cX, float cY) {
 	int oldSize = sizeOfPointArray;
 	sizeOfPointArray += 12; // Longer with 6 * 2 floats
 	float* temp = new float[sizeOfPointArray];
-	
+
 	// Copy previous vertices
 	for (int i = 0; i < oldSize; i++)
 		temp[i] = pointVertexArray[i];
-	
+
 	// Swap pointers and delete outdated array
 	float* oldArray = pointVertexArray;
 	pointVertexArray = temp;
 	delete[] oldArray;
-	
+
 	// Add 6 new coord pair to the vertexArray
-	pointVertexArray[oldSize +  0] = cX;
-	pointVertexArray[oldSize +  1] = cY;
-	pointVertexArray[oldSize +  2] = cX;
-	pointVertexArray[oldSize +  3] = cY + 0.02f;
-	pointVertexArray[oldSize +  4] = cX + 0.02f;
-	pointVertexArray[oldSize +  5] = cY;
-	pointVertexArray[oldSize +  6] = cX;
-	pointVertexArray[oldSize +  7] = cY - 0.02f;
-	pointVertexArray[oldSize +  8] = cX - 0.02f;
-	pointVertexArray[oldSize +  9] = cY;
+	pointVertexArray[oldSize + 0] = cX;
+	pointVertexArray[oldSize + 1] = cY;
+	pointVertexArray[oldSize + 2] = cX;
+	pointVertexArray[oldSize + 3] = cY + 0.02f;
+	pointVertexArray[oldSize + 4] = cX + 0.02f;
+	pointVertexArray[oldSize + 5] = cY;
+	pointVertexArray[oldSize + 6] = cX;
+	pointVertexArray[oldSize + 7] = cY - 0.02f;
+	pointVertexArray[oldSize + 8] = cX - 0.02f;
+	pointVertexArray[oldSize + 9] = cY;
 	pointVertexArray[oldSize + 10] = cX;
 	pointVertexArray[oldSize + 11] = cY + 0.02f;
 }
@@ -540,10 +571,6 @@ void genCirclesAt3() {
 
 	triangles.push_back(MyPoly(segment1, 50, segment2, 50, segment3, 50));
 
-
-	vec3 angles = calcAngles(c1, c2, c3, vec3(r1, r2, r3));
-	printf("Angles:\nalpha: %3.2f\nbeta:  %3.2f\ngamma: %3.2f\n\n", angles.x, angles.y, angles.z);
-
 	vec3 lengths = calcSegmentLengths(p1, p2, p3, c1, c2, c3, vec3(r1, r2, r3));
 	printf("Lenghts:\nSide1: %3.2f\nSide2: %3.2f\nSide3: %3.2f\n-------------\n", lengths.x, lengths.y, lengths.z);
 
@@ -585,7 +612,7 @@ void earCutter(MyPoly poly) {
 void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
 	// Convert to normalized device space
 	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-	float cY = 1.0f - 2.0f * pY / windowHeight;	
+	float cY = 1.0f - 2.0f * pY / windowHeight;
 
 	if (state == GLUT_DOWN && button == GLUT_LEFT_BUTTON) {
 		// Check if click was in the circle
@@ -601,8 +628,15 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 		genVerticesOfPoint(cX, cY);
 
 		if (cntClicks % 3 == 0) {
-			// Update circleVertices
+			// Generate circle segments vertices
 			genCirclesAt3();
+
+			// Measure side lenghts and inner angles
+			vec3 sides = triangles.at(cntClicks / 3 - 1).calcSides(50, 100);
+			//vec3 angles = triangles.at(cntClicks / 3 - 1).calcAngles(c1, c2, c3, vec3(r1, r2, r3));
+			printf("side a: %3.2f\tside b: %3.2f\tside c: %3.2f\n", sides.x, sides.y, sides.z);
+			//printf("Angles:\talpha: %3.2f\tbeta:  %3.2f\tgamma: %3.2f\n\n", angles.x, angles.y, angles.z);
+
 			earCutter(triangles.at(cntClicks / 3 - 1));
 		}
 
