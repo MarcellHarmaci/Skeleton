@@ -59,16 +59,6 @@ const char* const fragmentSource = R"(
 	}
 )";
 
-boolean intersect(vec2 x1, vec2 x2, vec2 y1, vec2 y2) {
-	vec2 xNormal = vec2(x1.y - x2.y, x2.x - x1.x);
-	vec2 yNormal = vec2(y1.y - y2.y, y2.x - y1.x);
-
-	boolean diffSide1 = dot(xNormal, (y1 - x1)) * dot(xNormal, (y2 - x1)) < 0;
-	boolean diffSide2 = dot(yNormal, (x1 - y1)) * dot(yNormal, (x2 - y1)) < 0;
-
-	return diffSide1 && diffSide2;
-}
-
 std::vector<vec2> drawPoly;
 
 class MyPoly {
@@ -87,14 +77,22 @@ public:
 		}
 	}
 
-	//~MyPoly() {
-	//	delete[] vertices;
-	//}
+	bool intersect(vec2 x1, vec2 x2, vec2 y1, vec2 y2) {
+		vec2 xNormal = vec2(x1.y - x2.y, x2.x - x1.x);
+		vec2 yNormal = vec2(y1.y - y2.y, y2.x - y1.x);
 
-	boolean intersectAny(int idx, vec2 prev, vec2 next) {
-		for (int i = 0; i < vertices.size() - 2; i++) {
-			if (i == idx || i - 1 == idx)
+		bool diffSide1 = dot(xNormal, (y1 - x1)) * dot(xNormal, (y2 - x1)) < 0.0f;
+		bool diffSide2 = dot(yNormal, (x1 - y1)) * dot(yNormal, (x2 - y1)) < 0.0f;
+
+		return diffSide1 && diffSide2;
+	}
+
+	bool intersectAny(int idx, vec2 prev, vec2 next) {
+		for (int i = 0; i < vertices.size() - 1; i++) {
+			if ((vertices.at(i).x == prev.x && vertices.at(i).y == prev.y) ||
+				(vertices.at(i).x == next.x && vertices.at(i).y == next.y ))
 				continue;
+
 			if (intersect(prev, next, vertices.at(i), vertices.at(i + 1)))
 				return true;
 		}
@@ -107,7 +105,7 @@ public:
 	int cntIntersect(vec2 x, vec2 y) {
 		int cnt = 0;
 
-		for (int i = 0; i < vertices.size() - 2; i++) {
+		for (int i = 0; i < vertices.size() - 1; i++) {
 			if (intersect(x, y, vertices.at(i), vertices.at(i + 1)))
 				cnt++;
 		}
@@ -116,31 +114,23 @@ public:
 
 		return cnt;
 	}
-
-	vec2* getPrevNext(int idx) {
-		vec2 prevNext[2];
-		int size = vertices.size();
-
-		if (idx == 0) {
-			prevNext[0] = vertices.at(size - 1);
-			prevNext[1] = vertices.at(1);
-		}
-		else if (idx == size - 1) {
-			prevNext[0] = vertices.at(size - 2);
-			prevNext[1] = vertices.at(0);
-		}
-		else {
-			prevNext[0] = vertices.at(idx - 1);
-			prevNext[1] = vertices.at(idx + 1);
-		}
-
-		return prevNext;
+	
+	int getPrevIdx(int idx) {
+		if (idx == 0)
+			return vertices.size() - 1;
+		else
+			return idx - 1;
 	}
-
-	boolean isEar(int idx) {
-		vec2* prevAndNext = getPrevNext(idx);
-		vec2 prev = prevAndNext[0];
-		vec2 next = prevAndNext[1];
+	int getNextIdx(int idx) {
+		if (idx == vertices.size() - 1)
+			return 0;
+		else
+			return idx + 1;
+	}
+	
+	bool isEar(int idx) {
+		vec2 prev = vertices.at(getPrevIdx(idx));
+		vec2 next = vertices.at(getNextIdx(idx));
 
 		if (intersectAny(idx, prev, next))
 			return false;
@@ -155,13 +145,17 @@ public:
 	}
 
 	void cut(int idx) {
-		vec2* prevAndNext = getPrevNext(idx);
-
 		drawPoly.push_back(vertices.at(idx));
-		drawPoly.push_back(prevAndNext[0]);
-		drawPoly.push_back(prevAndNext[1]);
+		drawPoly.push_back(vertices.at(getPrevIdx(idx)));
+		drawPoly.push_back(vertices.at(getNextIdx(idx)));
 
 		vertices.erase(vertices.begin() + idx);
+	}
+
+	float siriusLength(vec2 x, vec2 y) {
+		float dx = y.x - x.x;
+		float dy = y.y - x.y;
+		return sqrtf(dx*dx + dy*dy) / (1 - dot(x, x) - dot(y, y));
 	}
 
 	vec3 calcSides(int beginB, int beginC) {
@@ -170,22 +164,19 @@ public:
 		float lengthC = 0.0f;
 
 		for (int i = 0; i < beginB; i++) {
-			lengthA += length(vertices.at(i + 1) - vertices.at(i));
+			lengthA += siriusLength(vertices.at(i + 1), vertices.at(i));
 		}
 		for (int i = beginB; i < beginC; i++) {
-			lengthB += length(vertices.at(i + 1) - vertices.at(i));
+			lengthB += siriusLength(vertices.at(i + 1), vertices.at(i));
 		}
 		int size = vertices.size();
-		for (int i = beginC; i < size - 2; i++) {
-			lengthC += length(vertices.at(i + 1) - vertices.at(i));
+		for (int i = beginC; i < size - 1; i++) {
+			lengthC += siriusLength(vertices.at(i + 1), vertices.at(i));
 		}
-		lengthC += length(vertices.at(size - 1) - vertices.at(0));
+		lengthC += siriusLength(vertices.at(size - 1), vertices.at(0));
 
 		return vec3(lengthA, lengthB, lengthC);
 	}
-
-	// TODO - Implement function
-	vec3 calcAngles() {}
 
 };
 
@@ -193,6 +184,7 @@ public:
 int cntClicks = 0;
 std::vector<vec2> clicks;
 std::vector<MyPoly> triangles;
+static int curveDivisors = 200;
 
 // vertex and fragment shaders
 GPUProgram gpuProgram;
@@ -354,20 +346,13 @@ void onDisplay() {
 	// Draw triangles
 	glDrawArrays(
 		GL_TRIANGLES,
-		0, /*startIdx*/
-		drawPoly.size() /*# Elements*/
+		0,
+		drawPoly.size()
 	);
 
 	// Set CIRCLE color to GREEN
 	colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
 	glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
-
-	// Fun part shows how ear cutter works
-	//glDrawArrays(
-	//	GL_LINE_LOOP,
-	//	0, /*startIdx*/
-	//	drawPoly.size() /*# Elements*/
-	//);
 
 	glBindVertexArray(vao3);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo3);
@@ -385,31 +370,9 @@ void onDisplay() {
 		glUniform3f(colorLocation, 0.0f, 1.0f, 0.0f);
 		glDrawArrays(
 			GL_LINE_LOOP,
-			150 * i,
-			150
+			3 * curveDivisors * i,
+			3 * curveDivisors
 		);
-		/*
-		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
-		glDrawArrays(
-			GL_LINE_STRIP,
-			150 * i,
-			50
-		);
-		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
-		glDrawArrays(
-			GL_LINE_STRIP,
-			150 * i + 50,
-			50
-		);
-		colorLocation = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(colorLocation, 1.0f, 0.0f, 0.0f);
-		glDrawArrays(
-			GL_LINE_STRIP,
-			150 * i + 100,
-			50
-		);
-		*/
 	}
 
 	glutSwapBuffers(); // exchange buffers for double buffering
@@ -449,45 +412,17 @@ vec2 calcCenter(vec2 p1, vec2 p2) {
 	return center;
 }
 
-// Cos tetelbol kifejezve a szöget
-// TODO - Move to MyPoly, Rewrite and Remove this
 vec3 calcAngles(vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
 	float r1 = radiuses.x;
 	float r2 = radiuses.y;
 	float r3 = radiuses.z;
 
+	// Using law of cosines
 	return vec3(
-		180 - acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
-		180 - acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
-		180 - acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
+		acosf((length(c1 - c2) * length(c1 - c2) - (r1 * r1) - (r2 * r2)) / (-2.0f * r1 * r2)) / M_PI * 180,
+		acosf((length(c2 - c3) * length(c2 - c3) - (r2 * r2) - (r3 * r3)) / (-2.0f * r2 * r3)) / M_PI * 180,
+		acosf((length(c3 - c1) * length(c3 - c1) - (r3 * r3) - (r1 * r1)) / (-2.0f * r3 * r1)) / M_PI * 180
 	);
-}
-
-// TODO - Remove function
-vec3 calcSegmentLengths(vec2 p1, vec2 p2, vec2 p3, vec2 c1, vec2 c2, vec2 c3, vec3 radiuses) {
-	float r1 = radiuses.x;
-	float r2 = radiuses.y;
-	float r3 = radiuses.z;
-
-	float angle1 = atan2f(p1.x - c1.x, p1.y - c1.y);
-	float angle2 = atan2f(p2.x - c1.x, p2.y - c1.y);
-	float diff1 = angle2 - angle1;
-	if (diff1 < 0) diff1 *= -1;
-	if (diff1 > M_PI) diff1 = 2 * M_PI - diff1;
-
-	angle1 = atan2f(p2.x - c2.x, p2.y - c2.y);
-	angle2 = atan2f(p3.x - c2.x, p3.y - c2.y);
-	float diff2 = angle2 - angle1;
-	if (diff2 < 0) diff2 *= -1;
-	if (diff2 > M_PI) diff2 = 2 * M_PI - diff2;
-
-	angle1 = atan2f(p3.x - c3.x, p3.y - c3.y);
-	angle2 = atan2f(p1.x - c3.x, p1.y - c3.y);
-	float diff3 = angle2 - angle1;
-	if (diff3 < 0) diff3 *= -1;
-	if (diff3 > M_PI) diff3 = 2 * M_PI - diff3;
-
-	return vec3(r1 * diff1, r2 * diff2, r3 * diff3);
 }
 
 void genVerticesOfPoint(float cX, float cY) {
@@ -521,26 +456,26 @@ void genVerticesOfPoint(float cX, float cY) {
 }
 
 vec2* genCircleSegment(vec2 p1, vec2 p2, vec2 c, float r) {
-	vec2* segment = new vec2[50];
+	vec2* segment = new vec2[curveDivisors];
 
 	// Generate line segments
-	for (int i = 0; i < 50; i++) {
-		float t = (float)i / (float)50;
+	for (int i = 0; i < curveDivisors; i++) {
+		float t = (float)i / (float)curveDivisors;
 		segment[i] = p1 * (1 - t) + p2 * t;
 	}
 
 	// Project segment onto circle
-	for (int i = 0; i < 50; i++) {
+	for (int i = 0; i < curveDivisors; i++) {
 		segment[i] = c + normalize(segment[i] - c) * r;
 	}
 
 	return segment;
 }
 
-void genCirclesAt3() {
+vec3 genCirclesAndAngles() {
 	// Dynamicly make space for new coords 
 	int oldSize = sizeOfCircleArray;
-	sizeOfCircleArray += 300; // Longer with 3 * 50 * 2 floats
+	sizeOfCircleArray += 3 * curveDivisors * 2; // Longer with 3 * curveDivisors * 2 floats
 	float* temp = new float[sizeOfCircleArray];
 
 	// Copy previous vertices
@@ -569,32 +504,29 @@ void genCirclesAt3() {
 	vec2* segment2 = genCircleSegment(p2, p3, c2, r2);
 	vec2* segment3 = genCircleSegment(p3, p1, c3, r3);
 
-	triangles.push_back(MyPoly(segment1, 50, segment2, 50, segment3, 50));
-
-	vec3 lengths = calcSegmentLengths(p1, p2, p3, c1, c2, c3, vec3(r1, r2, r3));
-	printf("Lenghts:\nSide1: %3.2f\nSide2: %3.2f\nSide3: %3.2f\n-------------\n", lengths.x, lengths.y, lengths.z);
+	triangles.push_back(MyPoly(segment1, curveDivisors, segment2, curveDivisors, segment3, curveDivisors));
 
 	// Put segments into circleVertices
-	for (int i = 0; i < 50; i++) {
+	for (int i = 0; i < curveDivisors; i++) {
 		circleVertices[oldSize + 2 * i + 0] = segment1[i].x;
 		circleVertices[oldSize + 2 * i + 1] = segment1[i].y;
 	}
 
-	for (int i = 0; i < 50; i++) {
-		double phi = 2 * M_PI * i / 50;
-		circleVertices[oldSize + 2 * i + 100] = segment2[i].x;
-		circleVertices[oldSize + 2 * i + 101] = segment2[i].y;
+	for (int i = 0; i < curveDivisors; i++) {
+		circleVertices[oldSize + 2 * (i + curveDivisors)]	  = segment2[i].x;
+		circleVertices[oldSize + 2 * (i + curveDivisors) + 1] = segment2[i].y;
 	}
 
-	for (int i = 0; i < 50; i++) {
-		double phi = 2 * M_PI * i / 50;
-		circleVertices[oldSize + 2 * i + 200] = segment3[i].x;
-		circleVertices[oldSize + 2 * i + 201] = segment3[i].y;
+	for (int i = 0; i < curveDivisors; i++) {
+		circleVertices[oldSize + 2 * (i + 2 * curveDivisors)]	  = segment3[i].x;
+		circleVertices[oldSize + 2 * (i + 2 * curveDivisors) + 1] = segment3[i].y;
 	}
 
 	delete[] segment1;
 	delete[] segment2;
 	delete[] segment3;
+
+	return calcAngles(c1, c2, c3, vec3(r1, r2, r3));
 }
 
 void earCutter(MyPoly poly) {
@@ -606,6 +538,9 @@ void earCutter(MyPoly poly) {
 			}
 		}
 	}
+	drawPoly.push_back(poly.vertices.at(0));
+	drawPoly.push_back(poly.vertices.at(1));
+	drawPoly.push_back(poly.vertices.at(2));
 }
 
 // Mouse click event
@@ -629,13 +564,12 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 
 		if (cntClicks % 3 == 0) {
 			// Generate circle segments vertices
-			genCirclesAt3();
+			vec3 angles = genCirclesAndAngles();
+			// Measure side lenghts
+			vec3 sides = triangles.at(cntClicks / 3 - 1).calcSides(curveDivisors, 2 * curveDivisors);
 
-			// Measure side lenghts and inner angles
-			vec3 sides = triangles.at(cntClicks / 3 - 1).calcSides(50, 100);
-			//vec3 angles = triangles.at(cntClicks / 3 - 1).calcAngles(c1, c2, c3, vec3(r1, r2, r3));
-			printf("side a: %3.2f\tside b: %3.2f\tside c: %3.2f\n", sides.x, sides.y, sides.z);
-			//printf("Angles:\talpha: %3.2f\tbeta:  %3.2f\tgamma: %3.2f\n\n", angles.x, angles.y, angles.z);
+			printf("Alpha: %f, Beta:  %f, Gamma: %f, Angle sum: %f\n", angles.x, angles.y, angles.z, (float)angles.x + angles.y + angles.z);
+			printf("a: %f, b: %f, c: %f\n", sides.x, sides.y, sides.z);
 
 			earCutter(triangles.at(cntClicks / 3 - 1));
 		}
@@ -647,7 +581,6 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
 }
 
 // Key of ASCII code released
